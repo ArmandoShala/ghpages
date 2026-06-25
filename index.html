@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shared Checklist Pages</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section id="login-view" class="card login-card" aria-labelledby="login-title">
+        <p class="eyebrow">Private family pages</p>
+        <h1 id="login-title">Who is visiting?</h1>
+        <p class="muted">
+          Type your name to open the pages prepared for you. Try <strong>Nasli</strong> or <strong>Shando</strong>.
+        </p>
+        <form id="login-form" class="login-form">
+          <label for="name-input">Name</label>
+          <input
+            id="name-input"
+            name="name"
+            type="text"
+            inputmode="text"
+            autocomplete="given-name"
+            placeholder="Nasli"
+            aria-describedby="login-help"
+            required
+          />
+          <p id="login-help" class="help-text">This is a lightweight input mask, not a password.</p>
+          <button type="submit">Open pages</button>
+        </form>
+      </section>
+
+      <section id="dashboard-view" class="dashboard hidden" aria-live="polite">
+        <header class="dashboard-header">
+          <div>
+            <p class="eyebrow">Welcome</p>
+            <h1 id="welcome-title">Hello</h1>
+            <p id="access-summary" class="muted"></p>
+          </div>
+          <button id="logout-button" class="secondary" type="button">Switch user</button>
+        </header>
+
+        <div class="layout">
+          <aside class="card page-list" aria-labelledby="pages-title">
+            <h2 id="pages-title">Pages</h2>
+            <div id="page-buttons" class="page-buttons"></div>
+          </aside>
+
+          <article id="page-content" class="card content-card" tabindex="-1"></article>
+        </div>
+      </section>
+    </main>
+
+    <template id="unknown-user-template">
+      <div class="empty-state">
+        <h2>No pages found</h2>
+        <p>
+          This static demo currently knows Nasli and Shando. Add more users in <code>app.js</code>.
+        </p>
+      </div>
+    </template>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>
