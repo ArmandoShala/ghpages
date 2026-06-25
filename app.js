@@ -1,4 +1,6 @@
 const STORAGE_KEY = "family-pages-progress-v1";
+const configuredApiUrl = window.CHECKLIST_API_URL ?? "";
+const API_URL = (configuredApiUrl || (window.location.protocol.startsWith("http") ? window.location.origin : "")).replace(/\/$/, "");
 
 const users = {
   nasli: {
@@ -21,14 +23,14 @@ const pages = [
     body: [
       "This page is visible when Nasli signs in.",
       "Shando can also see it because Shando has overview access.",
-      "GitHub Pages is static hosting, so shared server-side storage is not available without adding an external backend.",
+      "When this site is opened through server.js, checklist progress is shared through a small file-backed API instead of only this browser.",
     ],
   },
   {
     id: "nasli-checklist",
     owner: "nasli",
     title: "Nasli checklist",
-    description: "A markdown-like checklist that persists in this browser.",
+    description: "A markdown-like checklist that can be shared through the progress API.",
     type: "checklist",
     items: [
       "Read the welcome information",
@@ -45,7 +47,7 @@ const pages = [
     items: [
       "Review Nasli's progress",
       "Add more people and pages in app.js",
-      "Decide whether localStorage is enough or an external service is needed",
+      "Run server.js so the progress API can save everyone's checklist state to a file",
     ],
   },
 ];
@@ -63,12 +65,14 @@ const unknownTemplate = document.querySelector("#unknown-user-template");
 
 let currentUser = null;
 let currentPageId = null;
+let progressCache = {};
+let storageNotice = "";
 
 function normalizeName(name) {
   return name.trim().toLowerCase();
 }
 
-function loadProgress() {
+function loadLocalProgress() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? {};
   } catch {
@@ -76,18 +80,52 @@ function loadProgress() {
   }
 }
 
-function saveProgress(progress) {
+function saveLocalProgress(progress) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
 }
 
-function showDashboard(userKey) {
+async function loadProgress() {
+  if (!API_URL) {
+    storageNotice = "Progress is saved in this browser with localStorage.";
+    return loadLocalProgress();
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/progress`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Progress API returned ${response.status}`);
+    storageNotice = "Progress is shared through the file-backed progress API, so Shando can see Nasli's completed items.";
+    return await response.json();
+  } catch (error) {
+    console.warn(error);
+    storageNotice = "Progress API is unavailable, so this browser is temporarily using localStorage.";
+    return loadLocalProgress();
+  }
+}
+
+async function saveProgress(progress) {
+  if (!API_URL) {
+    saveLocalProgress(progress);
+    return;
+  }
+
+  const response = await fetch(`${API_URL}/progress`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(progress),
+  });
+
+  if (!response.ok) throw new Error(`Progress API returned ${response.status}`);
+}
+
+async function showDashboard(userKey) {
   currentUser = users[userKey];
+  progressCache = await loadProgress();
   const visiblePages = pages.filter((page) => currentUser.canSee.includes(page.owner));
 
   loginView.classList.add("hidden");
   dashboardView.classList.remove("hidden");
   welcomeTitle.textContent = `Hello, ${currentUser.displayName}`;
-  accessSummary.textContent = `${currentUser.displayName} can see ${visiblePages.length} page${visiblePages.length === 1 ? "" : "s"}. Progress is saved in this browser with localStorage.`;
+  accessSummary.textContent = `${currentUser.displayName} can see ${visiblePages.length} page${visiblePages.length === 1 ? "" : "s"}. ${storageNotice}`;
 
   pageButtons.innerHTML = "";
   visiblePages.forEach((page) => {
@@ -143,13 +181,12 @@ function renderPage(pageId) {
 }
 
 function renderChecklist(page) {
-  const progress = loadProgress();
   const checklist = document.createElement("ul");
   checklist.className = "checklist";
 
   page.items.forEach((text, index) => {
     const key = `${page.id}:${index}`;
-    const saved = progress[key];
+    const saved = progressCache[key];
     const item = document.createElement("li");
     item.className = `check-item${saved?.done ? " done" : ""}`;
 
@@ -166,8 +203,9 @@ function renderChecklist(page) {
     meta.className = "meta";
     meta.textContent = saved?.done ? `Done by ${saved.by} on ${new Date(saved.at).toLocaleString()}` : "Not done yet";
 
-    checkbox.addEventListener("change", () => {
-      const nextProgress = loadProgress();
+    checkbox.addEventListener("change", async () => {
+      checkbox.disabled = true;
+      const nextProgress = { ...progressCache };
       if (checkbox.checked) {
         nextProgress[key] = {
           done: true,
@@ -177,7 +215,14 @@ function renderChecklist(page) {
       } else {
         delete nextProgress[key];
       }
-      saveProgress(nextProgress);
+
+      try {
+        await saveProgress(nextProgress);
+        progressCache = nextProgress;
+      } catch (error) {
+        console.error(error);
+        alert("Could not save that change. Please try again.");
+      }
       renderPage(currentPageId);
     });
 
@@ -188,7 +233,7 @@ function renderChecklist(page) {
   return checklist;
 }
 
-loginForm.addEventListener("submit", (event) => {
+loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const userKey = normalizeName(nameInput.value);
   if (!users[userKey]) {
@@ -197,7 +242,7 @@ loginForm.addEventListener("submit", (event) => {
     return;
   }
   nameInput.setCustomValidity("");
-  showDashboard(userKey);
+  await showDashboard(userKey);
 });
 
 nameInput.addEventListener("input", () => nameInput.setCustomValidity(""));
@@ -205,6 +250,7 @@ nameInput.addEventListener("input", () => nameInput.setCustomValidity(""));
 logoutButton.addEventListener("click", () => {
   currentUser = null;
   currentPageId = null;
+  progressCache = {};
   dashboardView.classList.add("hidden");
   loginView.classList.remove("hidden");
   nameInput.focus();
